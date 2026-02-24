@@ -291,14 +291,11 @@ function ContactProgress({contacts,userId}){
 }
 function getStaggerDate(cid,tasks,uid){const ex=tasks.filter(t=>t.companyId===cid&&t.userId===uid&&t.type==='email'&&!t.completed).map(t=>t.dueDate).sort();if(ex.length===0)return fd(1);const d=new Date(ex[ex.length-1]);d.setDate(d.getDate()+14);return d.toISOString().split('T')[0]}
 
-// ─── COMPANY CLAIMING ───
+// ─── COMPANY CLAIMING (informational only — no locking) ───
 function getClaimStatus(company,uid){
   if(!company.claimedBy)return{status:'free',claimedBy:null,months:0};
   const ms=Math.round((new Date()-new Date(company.claimDate||company.updatedAt))/(1000*60*60*24*30.44));
-  if(company.claimedBy===uid)return{status:'mine',claimedBy:company.claimedBy,months:ms,stale:ms>=3};
-  if(ms<3)return{status:'locked',claimedBy:company.claimedBy,months:ms};
-  if(ms<6)return{status:'stale',claimedBy:company.claimedBy,months:ms};
-  return{status:'expired',claimedBy:company.claimedBy,months:ms};
+  return{status:company.claimedBy===uid?'mine':'other',claimedBy:company.claimedBy,months:ms};
 }
 function claimCompany(data,cid,uid){
   return data.companies.map(c=>c.id===cid?{...c,claimedBy:uid,claimDate:new Date().toISOString()}:c);
@@ -600,7 +597,7 @@ If not confident about a field, use "Unknown".`;
   function addCo(){if(!form.name.trim())return;const n={id:gid(),...form,contacts:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),aiNews:''};const u={...data,companies:[...data.companies,n]};setData(u);sv(u);setForm({name:'',sector:'Defence',country:'UK',status:'prospect',website:'',notes:''});setShowAdd(false)}
   function delCo(id){if(!confirm('Delete?'))return;const u={...data,companies:data.companies.filter(c=>c.id!==id),tasks:data.tasks.filter(t=>t.companyId!==id)};setData(u);sv(u)}
   const filtered=data.companies.filter(c=>{if(search&&!c.name.toLowerCase().includes(search.toLowerCase()))return false;if(fS&&c.status!==fS)return false;if(fC&&c.country!==fC)return false;
-    if(fClaim==='mine'&&c.claimedBy!==uid)return false;if(fClaim==='other'&&(c.claimedBy===uid||!c.claimedBy))return false;if(fClaim==='free'&&c.claimedBy)return false;if(fClaim==='available'){const cl=getClaimStatus(c,uid);if(cl.status==='locked'||c.avoided)return false}
+    if(fClaim==='mine'&&c.claimedBy!==uid)return false;if(fClaim==='other'&&(c.claimedBy===uid||!c.claimedBy))return false;if(fClaim==='free'&&c.claimedBy)return false;if(fClaim==='available'){if(c.avoided)return false}
     if(fStar&&fStar!=='avoided'&&(c.priority||0)!==Number(fStar))return false;
     if(fStar!=='avoided'&&!fStar&&c.avoided)return false;
     if(fStar==='avoided'&&!c.avoided)return false;
@@ -630,8 +627,7 @@ If not confident about a field, use "Unknown".`;
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             {claim.claimedBy&&<span className="owner-tag" style={{color:USERS[claim.claimedBy]?.color||'var(--tm)',background:(USERS[claim.claimedBy]?.color||'var(--tm)')+'18'}}>{USERS[claim.claimedBy]?.initials}</span>}
             <div><span style={{fontWeight:500}}>{c.name}</span>{tc>0&&<span className="mono" style={{fontSize:10,marginLeft:8,color:cc2===tc?'var(--green)':cc2>0?'var(--amber)':'var(--tm)'}}>{cc2}/{tc}</span>}{myC>0&&<span className="mono" style={{fontSize:9,marginLeft:4,color:'var(--tm)'}}>({myC} mine)</span>}
-            {claim.status==='locked'&&<span className="mono" style={{fontSize:9,marginLeft:6,color:'var(--red)'}}>🔒</span>}
-            {claim.status==='stale'&&<span className="mono" style={{fontSize:9,marginLeft:6,color:'var(--amber)'}}>⚠</span>}
+            {claim.status==='other'&&<span className="mono" style={{fontSize:9,marginLeft:6,color:USERS[claim.claimedBy]?.color}}>◎</span>}
             {c.enrichedDate?<span style={{fontSize:7,marginLeft:4,color:'var(--green)'}}>●</span>:<span style={{fontSize:7,marginLeft:4,color:'var(--tm)',opacity:.4}}>○</span>}
             </div>
           </div>
@@ -727,10 +723,7 @@ Return ONLY valid JSON — no markdown, no backticks, no preamble:
     </div>
     {company.avoided&&<div style={{padding:'10px 16px',background:'var(--redd)33',border:'1px solid var(--red)33',borderRadius:8,marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:16}}>⊘</span><div style={{flex:1,fontSize:13,color:'var(--red)',fontWeight:500}}>This company is marked as AVOID</div><button className="bs bx" onClick={()=>upCo({avoided:false})}>Remove</button></div>}
     {(()=>{const claim=getClaimStatus(company,uid);
-      if(claim.status==='locked')return(<div style={{padding:'12px 16px',background:'var(--redd)44',border:'1px solid var(--red)44',borderRadius:8,marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:18}}>🔒</span><div><div style={{fontWeight:600,color:'var(--red)',fontSize:13}}>Claimed by {USERS[claim.claimedBy]?.name} — {claim.months} month{claim.months!==1?'s':''} ago</div><div style={{fontSize:12,color:'var(--t2)',marginTop:2}}>Locked for 3 months from last activity. You cannot add contacts or take actions on this company.</div></div></div>);
-      if(claim.status==='stale')return(<div style={{padding:'12px 16px',background:'var(--amberd)44',border:'1px solid var(--amber)44',borderRadius:8,marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:18}}>⚠</span><div><div style={{fontWeight:600,color:'var(--amber)',fontSize:13}}>Claimed by {USERS[claim.claimedBy]?.name} — {claim.months} month{claim.months!==1?'s':''} since last activity</div><div style={{fontSize:12,color:'var(--t2)',marginTop:2}}>Claim is stale. You can take over this company.</div></div><button className="bp bsm" onClick={()=>{const uCo=claimCompany(data,cid,uid);const u={...data,companies:uCo};setData(u);sv(u)}}>Claim for {USERS[uid]?.name}</button></div>);
-      if(claim.status==='expired')return(<div style={{padding:'12px 16px',background:'var(--bg2)',border:'1px solid var(--bd)',borderRadius:8,marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:18}}>◇</span><div><div style={{fontWeight:500,fontSize:13,color:'var(--t2)'}}>Previously claimed by {USERS[claim.claimedBy]?.name} — expired ({claim.months} months inactive)</div></div><button className="bp bsm" onClick={()=>{const uCo=claimCompany(data,cid,uid);const u={...data,companies:uCo};setData(u);sv(u)}}>Claim for {USERS[uid]?.name}</button></div>);
-      if(claim.status==='mine'&&claim.stale)return(<div style={{padding:'12px 16px',background:'var(--amberd)33',border:'1px solid var(--amber)33',borderRadius:8,marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:18}}>⚠</span><div><div style={{fontWeight:600,color:'var(--amber)',fontSize:13}}>Your claim is going stale — {claim.months} months since last activity</div><div style={{fontSize:12,color:'var(--t2)',marginTop:2}}>Take action to keep this company. After 6 months it opens up to {Object.values(USERS).filter(u=>u.id!==uid)[0]?.name}.</div></div></div>);
+      if(claim.status==='other')return(<div style={{padding:'10px 16px',background:'var(--bg2)',border:'1px solid var(--bd)',borderRadius:8,marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:14}}>◎</span><div style={{fontSize:13,color:'var(--t2)'}}>First worked by <span style={{color:USERS[claim.claimedBy]?.color,fontWeight:600}}>{USERS[claim.claimedBy]?.name}</span> — {claim.months} month{claim.months!==1?'s':''} ago. Both users can add contacts and take actions.</div></div>);
       return null;
     })()}
     <div style={{display:'grid',gridTemplateColumns:'5fr 3fr',gap:20}}>
@@ -751,12 +744,12 @@ Return ONLY valid JSON — no markdown, no backticks, no preamble:
           <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:10}}><span className="mono" style={{fontSize:9,color:'var(--t2)',fontWeight:600,width:70,whiteSpace:'nowrap'}}>KEY PROGS</span><input value={company.keyProgrammes||''} onChange={e=>upCo({keyProgrammes:e.target.value})} placeholder="e.g. Tempest, Type 26, Challenger 3" style={{flex:1,fontSize:12}}/></div>
           <textarea value={company.notes||''} onChange={e=>upCo({notes:e.target.value})} placeholder="Company notes — hiring challenges, org structure, intel from calls..." style={{minHeight:150,fontSize:13}}/>
         </div>
-        {CATS.map(cat=>{const cts=(company.contacts||[]).filter(c=>c.category===cat.v);const claim=getClaimStatus(company,uid);const locked=claim.status==='locked';
+        {CATS.map(cat=>{const cts=(company.contacts||[]).filter(c=>c.category===cat.v);
           return(<div key={cat.v} style={{background:'var(--bgc)',border:'1px solid var(--bd)',borderRadius:10,padding:16,marginBottom:16}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}><div><div className="sh" style={{color:cat.c,marginBottom:2}}>{cat.l.toUpperCase()}</div><div style={{fontSize:10,color:'var(--tm)'}}>{cat.d}</div></div>{!locked&&<button className="bs bsm" onClick={()=>{setCtForm({...ctForm,category:cat.v});setShowAddCt(true)}}>+ Add</button>}</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}><div><div className="sh" style={{color:cat.c,marginBottom:2}}>{cat.l.toUpperCase()}</div><div style={{fontSize:10,color:'var(--tm)'}}>{cat.d}</div></div><button className="bs bsm" onClick={()=>{setCtForm({...ctForm,category:cat.v});setShowAddCt(true)}}>+ Add</button></div>
             {cts.length===0&&<div style={{color:'var(--tm)',fontSize:12,fontStyle:'italic'}}>No contacts — add from LinkedIn</div>}
-            {cts.map(ct=>{const qt=data.tasks.find(t=>t.contactId===ct.id&&t.userId===uid&&t.type==='email'&&!t.completed);const du=qt?daysFromNow(qt.dueDate):null;const isOwner=ct.userId===uid;
-              return(<div key={ct.id} className="cc" style={{borderLeft:isOwner?`3px solid ${USERS[uid].color}`:`3px solid var(--bd)`,opacity:isOwner?1:.7}}>
+            {cts.map(ct=>{const qt=data.tasks.find(t=>t.contactId===ct.id&&t.userId===uid&&t.type==='email'&&!t.completed);const du=qt?daysFromNow(qt.dueDate):null;
+              return(<div key={ct.id} className="cc" style={{borderLeft:`3px solid ${USERS[ct.userId]?.color||'var(--bd)'}`,opacity:1}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
                   <OwnerTag userId={ct.userId}/>
                   <span style={{fontWeight:600,fontSize:14}}>{ct.name}</span><span style={{fontSize:12,color:'var(--tm)'}}>{ct.role}</span><span style={{flex:1}}/>
@@ -773,7 +766,7 @@ Return ONLY valid JSON — no markdown, no backticks, no preamble:
                 {ct.linkedinNoted&&<div className="mono" style={{fontSize:10,color:'var(--blue)',marginBottom:4}}>LinkedIn note sent {fmt(ct.linkedinNoteDate)}</div>}
                 {ct.notes&&<div style={{fontSize:12,color:'var(--t2)',marginBottom:4}}>{ct.notes}</div>}
                 {ct.lastCallNotes&&<div style={{fontSize:11,color:'var(--tm)',marginBottom:6,padding:'4px 8px',background:'var(--bg2)',borderRadius:4,borderLeft:'2px solid var(--green)'}}>Call: {ct.lastCallNotes}</div>}
-                {isOwner&&<div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
+                {<div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
                   {ct.email&&<button className="bb bx" onClick={()=>setEmailM({contact:ct,isFollowUp:false})}>✉ New Email</button>}
                   {ct.email&&ct.contacted&&<button className="bpu bx" onClick={()=>setEmailM({contact:ct,isFollowUp:true})}>◇ Follow-up</button>}
                   <button className="bg bx" onClick={()=>setCallM(ct)}>☎ Log Call</button>
@@ -896,44 +889,13 @@ function App(){
 
   useEffect(()=>{
     async function init(){
-      // Try Firebase first, but merge in any richer localStorage fields (callLog/activity/tasks/trackRecord)
-      const fb=await loadFromFirebase();
-      const ls=ld();
-
-      let d=fb||ls;
+      // Try Firebase first, then localStorage, then seed
+      let d=await loadFromFirebase();
+      if(!d){d=ld();if(d)setSyncStatus('local')}
       if(!d){d=await lds();setSyncStatus('fresh')}
-      else if(!fb && ls){setSyncStatus('local')}
-
-      // If Firebase exists but is missing history, merge from localStorage (one-time recovery)
-      if(fb && ls){
-        const merged={...fb};
-        if((!fb.callLog||fb.callLog.length===0) && (ls.callLog&&ls.callLog.length>0)) merged.callLog=ls.callLog;
-        if((!fb.tasks||fb.tasks.length===0) && (ls.tasks&&ls.tasks.length>0)) merged.tasks=ls.tasks;
-        if((!fb.activity||Object.keys(fb.activity).length===0) && (ls.activity&&Object.keys(ls.activity).length>0)) merged.activity=ls.activity;
-        if((!fb.trackRecord||fb.trackRecord==='') && (ls.trackRecord&&ls.trackRecord!=='')) merged.trackRecord=ls.trackRecord;
-
-        // Merge any non-sensitive settings fields (apiKey stays local)
-        merged.settings={...(fb.settings||{}),...(ls.settings||{}),apiKey:''};
-
-        d=merged;
-      }
-
-      const m=migrateData(d);
-      m.callLog=m.callLog||[];
-      m.activity=m.activity||{};
-      m.tasks=m.tasks||[];
-      m.trackRecord=m.trackRecord||'';
-      m.settings=m.settings||{apiKey:''};
-
-      // Re-attach local-only API key
+      const m=migrateData(d);m.callLog=m.callLog||[];
       m.settings.apiKey=localStorage.getItem('recon_apikey')||m.settings?.apiKey||'';
-
-      dataRef.current=m;
-      setData(m);
-
-      // Push the merged/fixed data back to Firebase so both machines see history
-      sv(m);
-      setLoading(false);
+      dataRef.current=m;setData(m);sv(m);setLoading(false);
     }
     init();
     // Real-time listener for sync from other users
